@@ -3,7 +3,7 @@
 Routes:
   POST /graphql   → AniList GraphQL proxy
   GET  /reanime   → Re:ANIME stream proxy
-  GET  /health    → Service status
+  GET  /health    → Service status (also HEAD for UptimeRobot)
 """
 
 import logging
@@ -33,14 +33,14 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_methods=["POST", "GET", "HEAD", "OPTIONS"],
     allow_headers=["*"],
 )
 
 
-# ============ HEALTH ============
-@app.get("/")
-@app.get("/health")
+# ============ HEALTH (GET + HEAD for UptimeRobot compatibility) ============
+@app.api_route("/", methods=["GET", "HEAD"])
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return {
         "ok": True,
