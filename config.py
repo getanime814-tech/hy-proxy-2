@@ -13,12 +13,20 @@ REANIME_DOMAINS = [
     "https://reanime.cz",
 ]
 
-# ============ Proxies ============
-# 🎯 Cloudflare WARP SOCKS5 Proxy
-WARP_PROXY = {
-    "http": "socks5h://127.0.0.1:40000",
-    "https": "socks5h://127.0.0.1:40000"
-}
+# ============ Webshare Proxies ============
+# 🎯 নতুন পাসওয়ার্ড দিয়ে আপডেট করা হলো
+PROXIES = [
+    "http://jxarwogj:f2ztbhuc0xoc@45.38.107.97:6014",
+    "http://jxarwogj:f2ztbhuc0xoc@64.137.96.74:6641",
+    "http://jxarwogj:f2ztbhuc0xoc@198.23.243.226:6361",
+    "http://jxarwogj:f2ztbhuc0xoc@38.154.185.97:6370",
+    "http://jxarwogj:f2ztbhuc0xoc@84.247.60.125:6095",
+    "http://jxarwogj:f2ztbhuc0xoc@191.96.254.138:6185",
+    "http://jxarwogj:f2ztbhuc0xoc@198.46.161.42:5092",
+    "http://jxarwogj:f2ztbhuc0xoc@64.137.10.153:5803",
+    "http://jxarwogj:f2ztbhuc0xoc@104.164.49.38:7693",
+    "http://jxarwogj:f2ztbhuc0xoc@23.26.71.145:5628",
+]
 
 # ============ Rate Limits ============
 ANILIST_RATE_MAX = 30
@@ -31,7 +39,6 @@ MAX_RETRIES = 3
 MAX_RETRY_WAIT_SECONDS = 10
 
 # ============ Browser Profiles ============
-# curl_cffi auto-generates matching headers based on the impersonation target.
 BROWSER_PROFILES = [
     {"name": "chrome124", "impersonate": "chrome124"},
     {"name": "chrome120", "impersonate": "chrome120"},
