@@ -7,20 +7,13 @@ from collections import deque
 from typing import Optional
 
 from curl_cffi import requests as curl_requests
-
 from config import (
-    ANILIST_RATE_MAX,
-    REANIME_RATE_MAX,
-    RATE_WINDOW_SECONDS,
-    REQUEST_TIMEOUT_SECONDS,
-    MAX_RETRIES,
-    BROWSER_PROFILES,
+    ANILIST_RATE_MAX, REANIME_RATE_MAX, RATE_WINDOW_SECONDS,
+    REQUEST_TIMEOUT_SECONDS, MAX_RETRIES, BROWSER_PROFILES,
 )
 
 logger = logging.getLogger(__name__)
 
-
-# ============ RATE LIMITER ============
 class RateLimiter:
     def __init__(self, max_requests: int, window: int = RATE_WINDOW_SECONDS):
         self._log: deque = deque()
@@ -42,19 +35,13 @@ class RateLimiter:
             self._log.popleft()
         return len(self._log)
 
-
 anilist_limiter = RateLimiter(ANILIST_RATE_MAX)
 reanime_limiter = RateLimiter(REANIME_RATE_MAX)
 
-
-# ============ PROFILE ROTATION ============
 def pick_profile() -> dict:
-    """Rotate browser profiles to avoid fingerprint tracking."""
     return BROWSER_PROFILES[int(time.time() * 1000) % len(BROWSER_PROFILES)]
 
-
 def build_browser_headers(profile: dict, referer: str, origin: str) -> dict:
-    """Build complete Chrome-like headers (critical for CF bypass)."""
     return {
         "User-Agent": profile["ua"],
         "Accept": "application/json, text/plain, */*",
@@ -72,8 +59,7 @@ def build_browser_headers(profile: dict, referer: str, origin: str) -> dict:
         "Priority": "u=1, i",
     }
 
-
-# ============ CURL CLIENT ============
+# 🎯 Advanced curl client with Session & Retry-After
 async def curl_request(
     url: str,
     method: str = "POST",
@@ -83,32 +69,33 @@ async def curl_request(
     timeout: int = REQUEST_TIMEOUT_SECONDS,
     max_retries: int = MAX_RETRIES,
 ):
-    """Async wrapper for curl_cffi with TLS impersonation."""
-
-    def do_request():
-        return curl_requests.request(
-            method=method,
-            url=url,
-            data=body,
-            headers=headers,
-            impersonate=impersonate,
-            timeout=timeout,
-            allow_redirects=True,
-        )
-
     last_error = None
     for attempt in range(max_retries):
         try:
-            response = await asyncio.to_thread(do_request)
-            # Retry on transient errors only
-            if response.status_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
-                backoff = (2 ** attempt) * 1.5 + (time.time() % 1)
-                logger.warning(
-                    f"Retry {attempt + 1}/{max_retries} after {backoff:.2f}s "
-                    f"— {url} ({response.status_code})"
+            # 🎯 Use a new session per request (stateless, but keeps connection alive internally)
+            with curl_requests.Session(impersonate=impersonate) as s:
+                response = await asyncio.to_thread(
+                    s.request,
+                    method=method,
+                    url=url,
+                    data=body,
+                    headers=headers,
+                    timeout=timeout,
+                    allow_redirects=True,
                 )
-                await asyncio.sleep(backoff)
+            
+            # 🎯 Respect Retry-After header if 429/503
+            if response.status_code in (429, 503):
+                retry_after = response.headers.get("Retry-After")
+                wait_time = int(retry_after) if retry_after and retry_after.isdigit() else (2 ** attempt) * 1.5
+                logger.warning(f"Rate limited/blocked. Waiting {wait_time}s...")
+                await asyncio.sleep(wait_time)
                 continue
+
+            if response.status_code in (500, 502, 504) and attempt < max_retries - 1:
+                await asyncio.sleep((2 ** attempt) * 1.5)
+                continue
+
             return response
         except Exception as e:
             last_error = e
