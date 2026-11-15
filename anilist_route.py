@@ -1,18 +1,20 @@
 """AniList GraphQL proxy route."""
 
 import logging
-
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Header, HTTPException
 from fastapi.responses import JSONResponse, Response
 
-from config import ANILIST_URL
+from config import ANILIST_URL, PROXY_API_KEY
 from helpers import anilist_limiter, curl_request, pick_profile, build_browser_headers
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+def verify_api_key(x_api_key: str = Header(None)):
+    if not x_api_key or x_api_key != PROXY_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API Key")
 
-@router.post("/graphql")
+@router.post("/graphql", dependencies=[__import__('fastapi').Depends(verify_api_key)])
 async def anilist_graphql(request: Request):
     body_bytes = await request.body()
     body_str = body_bytes.decode("utf-8", errors="replace")
@@ -21,11 +23,7 @@ async def anilist_graphql(request: Request):
         return JSONResponse({"error": "Empty body"}, status_code=400)
 
     if not anilist_limiter.check():
-        return JSONResponse(
-            {"error": "Local rate limit hit. Retry in 60s."},
-            status_code=429,
-            headers={"X-Cache": "RATE_LIMIT"},
-        )
+        return JSONResponse({"error": "Rate limit hit"}, status_code=429)
 
     try:
         profile = pick_profile()
@@ -34,21 +32,22 @@ async def anilist_graphql(request: Request):
             method="POST",
             body=body_str,
             headers={
-                **build_browser_headers(
-                    profile=profile,
-                    referer="https://anilist.co/",
-                    origin="https://anilist.co",
-                ),
+                **build_browser_headers(profile, "https://anilist.co/", "https://anilist.co"),
                 "Content-Type": "application/json",
             },
             impersonate=profile["impersonate"],
         )
 
+        # 🎯 Fixed: JSON Validation
+        try:
+            response.json()
+        except Exception:
+            return JSONResponse({"error": "Invalid JSON from AniList"}, status_code=502)
+
         return Response(
             content=response.text,
             status_code=response.status_code,
-            media_type="application/json",
-            headers={"X-Cache": "BYPASS"},
+            media_type="application/json"
         )
     except Exception as e:
         logger.error(f"AniList error: {e}")
