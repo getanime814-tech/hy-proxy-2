@@ -27,8 +27,6 @@ async def anilist_graphql(request: Request):
 
     try:
         profile = pick_profile()
-        
-        # 🎯 Use API headers (Origin removed)
         api_headers = build_api_headers("https://anilist.co/")
         api_headers["Content-Type"] = "application/json"
         
@@ -38,6 +36,7 @@ async def anilist_graphql(request: Request):
             body=body_str,
             headers=api_headers,
             impersonate=profile["impersonate"],
+            # AniList doesn't need WARP, so proxies=None
         )
 
         try:
