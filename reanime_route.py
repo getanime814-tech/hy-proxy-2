@@ -35,13 +35,14 @@ async def reanime_streams(
     last_error = ""
     last_status = 502
 
-    # 🎯 Shuffle proxies so we don't hit the same one every time
+    # 🎯 Shuffle all 20 proxies randomly
     shuffled_proxies = PROXIES.copy()
     random.shuffle(shuffled_proxies)
 
-    # Try up to 5 proxies + 3 profiles to avoid taking too long
+    # Try up to 5 different proxies per profile
     for profile in BROWSER_PROFILES:
-        for proxy_url in shuffled_proxies[:3]: # Try top 3 random proxies per profile
+        # 🎯 Taking top 5 random proxies to maximize success while keeping latency low
+        for proxy_url in shuffled_proxies[:5]: 
             proxy_dict = {"http": proxy_url, "https": proxy_url}
             html_headers = build_html_headers()
             api_headers = build_api_headers(domain + "/")
