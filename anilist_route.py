@@ -36,7 +36,6 @@ async def anilist_graphql(request: Request):
             body=body_str,
             headers=api_headers,
             impersonate=profile["impersonate"],
-            # AniList doesn't need WARP, so proxies=None
         )
 
         try:
@@ -44,11 +43,7 @@ async def anilist_graphql(request: Request):
         except Exception:
             return JSONResponse({"error": "Invalid JSON from AniList"}, status_code=502)
 
-        return Response(
-            content=response.text,
-            status_code=response.status_code,
-            media_type="application/json"
-        )
+        return Response(content=response.text, status_code=response.status_code, media_type="application/json")
     except Exception as e:
         logger.error(f"AniList error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
