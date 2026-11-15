@@ -7,6 +7,7 @@ from collections import deque
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import Optional
+import random
 
 from curl_cffi import requests as curl_requests
 from config import (
@@ -90,7 +91,7 @@ async def curl_request(
     timeout: int = REQUEST_TIMEOUT_SECONDS,
     max_retries: int = MAX_RETRIES,
     session: Optional[curl_requests.Session] = None,
-    proxies: Optional[dict] = None, # 🎯 WARP Proxy injected here
+    proxies: Optional[dict] = None,
 ):
     max_retries = max(1, max_retries)
     last_error = None
@@ -119,7 +120,6 @@ async def curl_request(
                 if is_last_attempt:
                     return response
                 wait_time = parse_retry_after(response.headers.get("Retry-After"), (2 ** attempt) * 1.5)
-                logger.warning(f"Rate limited. Waiting {wait_time:.1f}s...")
                 await asyncio.sleep(wait_time)
                 continue
 
