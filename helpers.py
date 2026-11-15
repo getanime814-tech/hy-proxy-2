@@ -45,7 +45,6 @@ def pick_profile() -> dict:
         raise ValueError("BROWSER_PROFILES cannot be empty")
     return BROWSER_PROFILES[int(time.monotonic() * 1000) % len(BROWSER_PROFILES)]
 
-# 🎯 HTML Headers for Warmup (Landing Page)
 def build_html_headers() -> dict:
     return {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -58,7 +57,6 @@ def build_html_headers() -> dict:
         "DNT": "1",
     }
 
-# 🎯 API Headers for Data Fetching (No Origin)
 def build_api_headers(referer: str) -> dict:
     return {
         "Accept": "application/json, text/plain, */*",
@@ -92,6 +90,7 @@ async def curl_request(
     timeout: int = REQUEST_TIMEOUT_SECONDS,
     max_retries: int = MAX_RETRIES,
     session: Optional[curl_requests.Session] = None,
+    proxies: Optional[dict] = None, # 🎯 WARP Proxy injected here
 ):
     max_retries = max(1, max_retries)
     last_error = None
@@ -104,6 +103,7 @@ async def curl_request(
             headers=headers,
             timeout=timeout,
             allow_redirects=True,
+            proxies=proxies,
         )
 
     for attempt in range(max_retries):
