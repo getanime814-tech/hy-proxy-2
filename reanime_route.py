@@ -1,95 +1,84 @@
 """Re:ANIME stream proxy route."""
 
 import logging
-from fastapi import APIRouter, Query
-from fastapi.responses import JSONResponse
-from config import REANIME_DOMAINS
-from helpers import reanime_limiter, curl_request, pick_profile, build_browser_headers
+import asyncio
+from fastapi import APIRouter, Query, Header, HTTPException, Depends
+from fastapi.responses import JSONResponse, Response
+from curl_cffi import requests as curl_requests
+
+from config import REANIME_DOMAINS, BROWSER_PROFILES, PROXY_API_KEY, REQUEST_TIMEOUT_SECONDS
+from helpers import reanime_limiter, build_browser_headers
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-def _process_servers(servers: list) -> list:
-    streams = []
-    for server in servers:
-        embed_url = server.get("dataLink", "")
-        if server.get("dataType") == "dub" and "&a=1" not in embed_url:
-            embed_url += "&a=1"
-        streams.append({
-            "id": server.get("$id"),
-            "server": server.get("serverName"),
-            "type": server.get("dataType"),
-            "embedUrl": embed_url,
-        })
-    return streams
+def verify_api_key(x_api_key: str = Header(None)):
+    if not x_api_key or x_api_key != PROXY_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API Key")
 
-@router.get("/reanime")
+@router.get("/reanime", dependencies=[Depends(verify_api_key)])
 async def reanime_streams(
-    anilist: str = Query(..., description="AniList ID"),
-    episode: str = Query("1", description="Episode number"),
+    anilist: int = Query(..., gt=0, description="AniList ID must be > 0"),
+    episode: int = Query(1, gt=0, description="Episode must be > 0"),
 ):
-    try:
-        ep_num = int(episode)
-    except ValueError:
-        return JSONResponse({"success": False, "error": "Invalid episode", "streams": []}, status_code=400)
-
     if not reanime_limiter.check():
-        return JSONResponse({"success": False, "error": "Rate limit hit", "streams": []}, status_code=429)
+        return JSONResponse({"success": False, "servers": [], "error": "Rate limit hit"}, status_code=429)
 
-    last_error = None
-    domain = REANIME_DOMAINS[0] # https://reanime.cz
-    profile = pick_profile()
+    if not REANIME_DOMAINS:
+        return JSONResponse({"success": False, "servers": [], "error": "No domains configured"}, status_code=500)
 
-    try:
-        # 🎯 Step 1: Warmup (Hit homepage to get __cf_bm cookie)
-        warmup_url = f"{domain}/"
-        logger.info(f"[REANIME] Warming up session on {domain}")
-        await curl_request(
-            url=warmup_url,
-            method="GET",
-            headers=build_browser_headers(profile=profile, referer=domain, origin=domain),
-            impersonate=profile["impersonate"],
-            max_retries=1,
-        )
+    domain = REANIME_DOMAINS[0]
+    api_url = f"{domain}/api/flix/{anilist}/{episode}"
+    warmup_url = f"{domain}/"
+    
+    last_error = ""
+    last_status = 502
 
-        # 🎯 Step 2: Hit API with the warmed session
-        api_url = f"{domain}/api/flix/{anilist}/{episode}"
-        response = await curl_request(
-            url=api_url,
-            method="GET",
-            headers=build_browser_headers(profile=profile, referer=domain, origin=domain),
-            impersonate=profile["impersonate"],
-        )
+    for profile in BROWSER_PROFILES:
+        headers = build_browser_headers(profile, domain, domain)
+        
+        def do_session_request():
+            # 🎯 Critical: Warmup and API call in SAME session
+            with curl_requests.Session(impersonate=profile["impersonate"]) as session:
+                try:
+                    session.get(warmup_url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+                except Exception as e:
+                    logger.warning(f"Warmup failed for {profile['name']}: {e}")
+                return session.get(api_url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
 
-        if response.status_code != 200:
-            last_error = f"HTTP {response.status_code} from {domain}"
-            logger.warning(f"[REANIME] {last_error}")
-            # Fallback to next profile if 403
-            if response.status_code == 403:
-                profile = pick_profile()
-                response = await curl_request(
-                    url=api_url,
-                    method="GET",
-                    headers=build_browser_headers(profile=profile, referer=domain, origin=domain),
-                    impersonate=profile["impersonate"],
-                )
-                if response.status_code != 200:
-                     return JSONResponse({
-                        "success": False, "anilistId": anilist, "episode": ep_num,
-                        "streams": [], "error": f"CF Blocked (403). Tried {profile['name']}"
-                    })
+        try:
+            response = await asyncio.to_thread(do_session_request)
+            
+            if response.status_code == 200:
+                # 🎯 JSON Validation
+                try:
+                    data = response.json()
+                    if not isinstance(data, dict):
+                        raise ValueError("Not a dict")
+                except Exception:
+                    last_error = "Invalid JSON from upstream"
+                    last_status = 502
+                    continue
 
-        data = response.json()
-        if not data.get("success") or not data.get("servers"):
-            return JSONResponse({"success": False, "error": "No servers", "streams": []})
+                return Response(content=response.text, status_code=200, media_type="application/json")
+            
+            elif response.status_code in (403, 404):
+                last_error = f"Upstream blocked or not found (HTTP {response.status_code})"
+                last_status = 502
+            elif response.status_code == 429:
+                last_error = "Upstream rate limited"
+                last_status = 429
+            else:
+                last_error = f"Upstream HTTP {response.status_code}"
+                last_status = 502
+                
+        except Exception as e:
+            last_error = f"{profile['name']}: {str(e)}"
+            last_status = 504 # Timeout
 
-        logger.info(f"[REANIME] ✅ Success: {anilist}/{episode}")
-        return JSONResponse({
-            "success": True,
-            "anilistId": anilist,
-            "episode": ep_num,
-            "streams": _process_servers(data["servers"]),
-        })
-
-    except Exception as e:
-        return JSONResponse({"success": False, "error": str(e), "streams": []})
+    # 🎯 Fixed: Consistent Error Schema and Status Code
+    return JSONResponse({
+        "success": False,
+        "servers": [], # Upstream uses 'servers', not 'streams'
+        "error": last_error or "All profiles failed"
+    }, status_code=last_status)
