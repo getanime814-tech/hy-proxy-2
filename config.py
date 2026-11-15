@@ -1,12 +1,18 @@
 """Central configuration. Update here when APIs change."""
 
+import os
+
+# ============ Security ============
+# W3 থেকে রিকোয়েস্ট পাঠানোর সময় এই API Key পাঠাতে হবে
+PROXY_API_KEY = os.getenv("PROXY_API_KEY", "your-super-secret-key-change-me")
+
 # ============ AniList ============
 ANILIST_URL = "https://graphql.anilist.co"
 
 # ============ Re:ANIME ============
 # 🎯 Only .cz is active. .to is blocked for DC IPs.
 REANIME_DOMAINS = [
-    "https://reanime.cz",   # Primary & only domain
+    "https://reanime.cz",
 ]
 
 # ============ Rate Limits ============
@@ -17,6 +23,7 @@ RATE_WINDOW_SECONDS = 60
 # ============ HTTP ============
 REQUEST_TIMEOUT_SECONDS = 15
 MAX_RETRIES = 3
+MAX_RETRY_WAIT_SECONDS = 10
 
 # ============ Browser Profiles ============
 BROWSER_PROFILES = [
