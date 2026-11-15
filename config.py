@@ -13,9 +13,21 @@ REANIME_DOMAINS = [
     "https://reanime.cz",
 ]
 
-# ============ Webshare Proxies ============
-# 🎯 নতুন পাসওয়ার্ড দিয়ে আপডেট করা হলো
+# ============ Webshare Proxies (2 Accounts = 20 Proxies) ============
 PROXIES = [
+    # 🎯 Account 1 (fxzdfruw)
+    "http://fxzdfruw:r0li7fqpzw3a@45.38.107.97:6014",
+    "http://fxzdfruw:r0li7fqpzw3a@64.137.96.74:6641",
+    "http://fxzdfruw:r0li7fqpzw3a@198.23.243.226:6361",
+    "http://fxzdfruw:r0li7fqpzw3a@38.154.185.97:6370",
+    "http://fxzdfruw:r0li7fqpzw3a@84.247.60.125:6095",
+    "http://fxzdfruw:r0li7fqpzw3a@191.96.254.138:6185",
+    "http://fxzdfruw:r0li7fqpzw3a@198.46.161.42:5092",
+    "http://fxzdfruw:r0li7fqpzw3a@64.137.10.153:5803",
+    "http://fxzdfruw:r0li7fqpzw3a@104.164.49.38:7693",
+    "http://fxzdfruw:r0li7fqpzw3a@23.26.71.145:5628",
+    
+    # 🎯 Account 2 (jxarwogj)
     "http://jxarwogj:f2ztbhuc0xoc@45.38.107.97:6014",
     "http://jxarwogj:f2ztbhuc0xoc@64.137.96.74:6641",
     "http://jxarwogj:f2ztbhuc0xoc@198.23.243.226:6361",
