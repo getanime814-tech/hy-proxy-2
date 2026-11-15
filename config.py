@@ -4,9 +4,9 @@
 ANILIST_URL = "https://graphql.anilist.co"
 
 # ============ Re:ANIME ============
+# 🎯 Only .cz is active. .to is blocked for DC IPs.
 REANIME_DOMAINS = [
-    "https://reanime.cz",   # current primary (do not remove)
-    "https://reanime.to",   # fallback (may 403 from DC IPs)
+    "https://reanime.cz",   # Primary & only domain
 ]
 
 # ============ Rate Limits ============
@@ -19,8 +19,6 @@ REQUEST_TIMEOUT_SECONDS = 15
 MAX_RETRIES = 3
 
 # ============ Browser Profiles ============
-# 🎯 Critical: UA + TLS impersonate + Client Hints MUST match.
-# Otherwise Cloudflare JA3 fingerprint detects mismatch.
 BROWSER_PROFILES = [
     {
         "name": "chrome124-win",
