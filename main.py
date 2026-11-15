@@ -14,7 +14,6 @@ from config import ANILIST_RATE_MAX, REANIME_RATE_MAX, BROWSER_PROFILES, REANIME
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-# 🎯 Startup Validation
 if not BROWSER_PROFILES:
     raise ValueError("BROWSER_PROFILES list is empty in config.py")
 if not REANIME_DOMAINS:
@@ -24,7 +23,7 @@ app = FastAPI(title="GojoTV Hybrid Proxy", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Note: Since we added API Key, CORS wildcard is safe from public abuse
+    allow_origins=["*"], 
     allow_methods=["POST", "GET", "HEAD", "OPTIONS"],
     allow_headers=["*"],
 )
