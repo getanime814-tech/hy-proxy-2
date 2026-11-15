@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse, Response
 from curl_cffi import requests as curl_requests
 
 from config import REANIME_DOMAINS, BROWSER_PROFILES, PROXY_API_KEY, REQUEST_TIMEOUT_SECONDS
-from helpers import reanime_limiter, build_browser_headers
+from helpers import reanime_limiter, build_html_headers, build_api_headers
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,22 +35,25 @@ async def reanime_streams(
     last_status = 502
 
     for profile in BROWSER_PROFILES:
-        headers = build_browser_headers(profile, domain, domain)
+        # 🎯 Separate HTML and API headers
+        html_headers = build_html_headers()
+        api_headers = build_api_headers(domain + "/")
         
         def do_session_request():
-            # 🎯 Critical: Warmup and API call in SAME session
             with curl_requests.Session(impersonate=profile["impersonate"]) as session:
                 try:
-                    session.get(warmup_url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+                    # 1. Warmup with HTML headers
+                    session.get(warmup_url, headers=html_headers, timeout=REQUEST_TIMEOUT_SECONDS)
                 except Exception as e:
                     logger.warning(f"Warmup failed for {profile['name']}: {e}")
-                return session.get(api_url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+                
+                # 2. API Call with API headers (No Origin)
+                return session.get(api_url, headers=api_headers, timeout=REQUEST_TIMEOUT_SECONDS)
 
         try:
             response = await asyncio.to_thread(do_session_request)
             
             if response.status_code == 200:
-                # 🎯 JSON Validation
                 try:
                     data = response.json()
                     if not isinstance(data, dict):
@@ -58,27 +61,32 @@ async def reanime_streams(
                 except Exception:
                     last_error = "Invalid JSON from upstream"
                     last_status = 502
-                    continue
+                    continue # 🎯 FIX: Try next profile
 
                 return Response(content=response.text, status_code=200, media_type="application/json")
             
             elif response.status_code in (403, 404):
                 last_error = f"Upstream blocked or not found (HTTP {response.status_code})"
                 last_status = 502
+                continue # 🎯 FIX: Try next profile
+                
             elif response.status_code == 429:
                 last_error = "Upstream rate limited"
                 last_status = 429
+                continue # 🎯 FIX: Try next profile
+                
             else:
                 last_error = f"Upstream HTTP {response.status_code}"
                 last_status = 502
+                continue # 🎯 FIX: Try next profile
                 
         except Exception as e:
             last_error = f"{profile['name']}: {str(e)}"
-            last_status = 504 # Timeout
+            last_status = 504
+            continue # 🎯 FIX: Try next profile
 
-    # 🎯 Fixed: Consistent Error Schema and Status Code
     return JSONResponse({
         "success": False,
-        "servers": [], # Upstream uses 'servers', not 'streams'
+        "servers": [],
         "error": last_error or "All profiles failed"
     }, status_code=last_status)
