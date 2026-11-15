@@ -1,4 +1,4 @@
-"""Shared helpers: HTTP client, rate limiter, UA rotation."""
+"""Shared helpers: HTTP client, rate limiter, profile rotation."""
 
 import asyncio
 import logging
@@ -14,8 +14,7 @@ from config import (
     RATE_WINDOW_SECONDS,
     REQUEST_TIMEOUT_SECONDS,
     MAX_RETRIES,
-    USER_AGENTS,
-    TLS_IMPERSONATE,
+    BROWSER_PROFILES,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 # ============ RATE LIMITER ============
 class RateLimiter:
-    """Sliding window rate limiter."""
-
     def __init__(self, max_requests: int, window: int = RATE_WINDOW_SECONDS):
         self._log: deque = deque()
         self._max = max_requests
@@ -46,25 +43,47 @@ class RateLimiter:
         return len(self._log)
 
 
-# Global limiter instances
 anilist_limiter = RateLimiter(ANILIST_RATE_MAX)
 reanime_limiter = RateLimiter(REANIME_RATE_MAX)
 
 
-# ============ HELPERS ============
-def pick_ua() -> str:
-    return USER_AGENTS[int(time.time() * 1000) % len(USER_AGENTS)]
+# ============ PROFILE ROTATION ============
+def pick_profile() -> dict:
+    """Rotate browser profiles to avoid fingerprint tracking."""
+    return BROWSER_PROFILES[int(time.time() * 1000) % len(BROWSER_PROFILES)]
 
 
+def build_browser_headers(profile: dict, referer: str, origin: str) -> dict:
+    """Build complete Chrome-like headers (critical for CF bypass)."""
+    return {
+        "User-Agent": profile["ua"],
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Referer": referer,
+        "Origin": origin,
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "sec-ch-ua": profile["sec_ch_ua"],
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": profile["platform"],
+        "DNT": "1",
+        "Priority": "u=1, i",
+    }
+
+
+# ============ CURL CLIENT ============
 async def curl_request(
     url: str,
     method: str = "POST",
     body: Optional[str] = None,
     headers: Optional[dict] = None,
+    impersonate: str = "chrome124",
     timeout: int = REQUEST_TIMEOUT_SECONDS,
     max_retries: int = MAX_RETRIES,
 ):
-    """Async wrapper for curl_cffi (Chrome TLS impersonation)."""
+    """Async wrapper for curl_cffi with TLS impersonation."""
 
     def do_request():
         return curl_requests.request(
@@ -72,14 +91,16 @@ async def curl_request(
             url=url,
             data=body,
             headers=headers,
-            impersonate=TLS_IMPERSONATE,
+            impersonate=impersonate,
             timeout=timeout,
+            allow_redirects=True,
         )
 
     last_error = None
     for attempt in range(max_retries):
         try:
             response = await asyncio.to_thread(do_request)
+            # Retry on transient errors only
             if response.status_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
                 backoff = (2 ** attempt) * 1.5 + (time.time() % 1)
                 logger.warning(
