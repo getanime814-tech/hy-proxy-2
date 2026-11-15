@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from config import ANILIST_URL
-from helpers import anilist_limiter, curl_request, pick_ua
+from helpers import anilist_limiter, curl_request, pick_profile, build_browser_headers
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -20,7 +20,6 @@ async def anilist_graphql(request: Request):
     if not body_str.strip():
         return JSONResponse({"error": "Empty body"}, status_code=400)
 
-    # Rate limit only (no cache; W3 Redis handles caching upstream)
     if not anilist_limiter.check():
         return JSONResponse(
             {"error": "Local rate limit hit. Retry in 60s."},
@@ -29,18 +28,20 @@ async def anilist_graphql(request: Request):
         )
 
     try:
+        profile = pick_profile()
         response = await curl_request(
             url=ANILIST_URL,
             method="POST",
             body=body_str,
             headers={
+                **build_browser_headers(
+                    profile=profile,
+                    referer="https://anilist.co/",
+                    origin="https://anilist.co",
+                ),
                 "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Accept-Language": "en-US,en;q=0.9",
-                "User-Agent": pick_ua(),
-                "Origin": "https://anilist.co",
-                "Referer": "https://anilist.co/",
             },
+            impersonate=profile["impersonate"],
         )
 
         return Response(
