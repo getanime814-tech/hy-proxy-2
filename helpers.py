@@ -23,7 +23,7 @@ class RateLimiter:
         self._window = window
 
     def check(self) -> bool:
-        now = time.monotonic() # 🎯 Fixed: Monotonic clock used
+        now = time.monotonic()
         while self._log and now - self._log[0] > self._window:
             self._log.popleft()
         if len(self._log) >= self._max:
@@ -45,32 +45,37 @@ def pick_profile() -> dict:
         raise ValueError("BROWSER_PROFILES cannot be empty")
     return BROWSER_PROFILES[int(time.monotonic() * 1000) % len(BROWSER_PROFILES)]
 
-def build_browser_headers(profile: dict, referer: str, origin: str) -> dict:
+# 🎯 HTML Headers for Warmup (Landing Page)
+def build_html_headers() -> dict:
     return {
-        "User-Agent": profile["ua"],
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "DNT": "1",
+    }
+
+# 🎯 API Headers for Data Fetching (No Origin)
+def build_api_headers(referer: str) -> dict:
+    return {
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
         "Referer": referer,
-        "Origin": origin,
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin",
-        "sec-ch-ua": profile["sec_ch_ua"],
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": profile["platform"],
         "DNT": "1",
         "Priority": "u=1, i",
     }
 
 def parse_retry_after(header_val: Optional[str], default_wait: float) -> float:
-    """Parse Retry-After header (seconds or HTTP-date)"""
     if not header_val:
         return default_wait
-    
     if header_val.isdigit():
         return min(float(header_val), MAX_RETRY_WAIT_SECONDS)
-    
     try:
         dt = parsedate_to_datetime(header_val)
         wait_time = (dt - datetime.now(dt.tzinfo)).total_seconds()
@@ -88,7 +93,6 @@ async def curl_request(
     max_retries: int = MAX_RETRIES,
     session: Optional[curl_requests.Session] = None,
 ):
-    # Ensure max_retries is at least 1
     max_retries = max(1, max_retries)
     last_error = None
 
@@ -111,11 +115,9 @@ async def curl_request(
                 with curl_requests.Session(impersonate=impersonate) as s:
                     response = await asyncio.to_thread(do_request, s)
             
-            # 🎯 Fixed: Retry logic handles last attempt correctly
             if response.status_code in (429, 503):
                 if is_last_attempt:
-                    return response # Return the 429/503 response instead of looping infinitely
-                
+                    return response
                 wait_time = parse_retry_after(response.headers.get("Retry-After"), (2 ** attempt) * 1.5)
                 logger.warning(f"Rate limited. Waiting {wait_time:.1f}s...")
                 await asyncio.sleep(wait_time)
